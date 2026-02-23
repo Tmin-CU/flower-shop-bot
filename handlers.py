@@ -65,7 +65,6 @@ async def show_budgets(callback: CallbackQuery):
         [InlineKeyboardButton(text="Весенние букеты", callback_data="cat_spring_bouquets_0_0")],
         [InlineKeyboardButton(text="Назад", callback_data="start_menu")]
     ])
-
     if callback.message.photo:
         await callback.message.delete()
         await callback.message.answer("Выберите категорию:", reply_markup=kb)
@@ -78,11 +77,9 @@ async def show_products(callback: CallbackQuery):
     if len(parts) > 4:
         category = f"{parts[1]}_{parts[2]}"
         page = int(parts[3])
-        photo_idx = int(parts[4])
     else:
         category = parts[1]
         page = int(parts[2])
-        photo_idx = int(parts[3])
 
     product = await db.get_product_by_category(category, page)
     total_products = await db.count_products_by_category(category)
@@ -91,41 +88,36 @@ async def show_products(callback: CallbackQuery):
         return await callback.answer("В этой категории пока нет товаров.", show_alert=True)
 
     p_id, p_name, p_price, p_desc, p_photos = product
-    all_photos = p_photos.split("|")
-    current_photo = all_photos[photo_idx] if photo_idx < len(all_photos) else all_photos[0]
-
-    display_name = p_name if category in ["tulip_wraps", "roses"] else CAT_NAMES.get(category, p_name)
+    all_photos = p_photos.split("|")\n    
+display_name = p_name if category in ["tulip_wraps", "roses"] else CAT_NAMES.get(category, p_name)
     caption = f"<b>{display_name}</b>\n\nЦена: {p_price} руб.\n\n{p_desc}"
 
     nav_btns = []
     if page > 0:
-        nav_btns.append(InlineKeyboardButton(text="⬅️ Товар", callback_data=f"cat_{category}_{page-1}_0"))
+        nav_btns.append(InlineKeyboardButton(text="⬅️ Пред. товар", callback_data=f"cat_{category}_{page-1}_0"))
     if page < total_products - 1:
-        nav_btns.append(InlineKeyboardButton(text="Товар ➡️", callback_data=f"cat_{category}_{page+1}_0"))
+        nav_btns.append(InlineKeyboardButton(text="След. товар ➡️", callback_data=f"cat_{category}_{page+1}_0"))
 
-    photo_btns = []
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Оформить заказ", callback_data=f"buy_{p_id}")],
+        nav_btns,
+        [InlineKeyboardButton(text="К категориям", callback_data="catalog_budgets")]
+    ])
+
+    await callback.message.delete()
+
     if len(all_photos) > 1:
-        prev_idx = (photo_idx - 1) % len(all_photos)
-        next_idx = (photo_idx + 1) % len(all_photos)
-        photo_btns = [
-            InlineKeyboardButton(text="‹", callback_data=f"cat_{category}_{page}_{prev_idx}"),
-            InlineKeyboardButton(text=f"{photo_idx + 1}/{len(all_photos)}", callback_data="ignore"),
-            InlineKeyboardButton(text="›", callback_data=f"cat_{category}_{page}_{next_idx}")
-        ]
-
-    kb_list = [[InlineKeyboardButton(text="Оформить заказ", callback_data=f"buy_{p_id}")]]
-    if photo_btns: kb_list.append(photo_btns)
-    if nav_btns: kb_list.append(nav_btns)
-    kb_list.append([InlineKeyboardButton(text="К категориям", callback_data="catalog_budgets")])
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=kb_list)
-
-    if not callback.message.photo:
-        await callback.message.delete()
-        await callback.message.answer_photo(photo=current_photo, caption=caption, reply_markup=kb, parse_mode="HTML")
+        media_group = []
+        for i, photo_id in enumerate(all_photos):
+            if i == 0:
+                media_group.append(InputMediaPhoto(media=photo_id, caption=caption, parse_mode="HTML"))
+            else:
+                media_group.append(InputMediaPhoto(media=photo_id))
+        
+        await callback.message.answer_media_group(media=media_group)
+        await callback.message.answer("Выберите действие:", reply_markup=kb)
     else:
-        media = InputMediaPhoto(media=current_photo, caption=caption, parse_mode="HTML")
-        await callback.message.edit_media(media=media, reply_markup=kb)
+        await callback.message.answer_photo(photo=all_photos[0], caption=caption, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("buy_"))
 async def start_order(callback: CallbackQuery, state: FSMContext):
